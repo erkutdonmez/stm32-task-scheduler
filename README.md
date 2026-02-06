@@ -82,5 +82,4 @@ This project is intended for **learning and experimentation**, not production us
 
 Erkut Dönmez  
 Computer Engineering Graduate
-
 Embedded Software Enthusiast
