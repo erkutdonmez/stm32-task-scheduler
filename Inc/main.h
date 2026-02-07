@@ -2,7 +2,7 @@
  * main.h
  *
  *  Created on: Feb 1, 2026
- *      Author: DELL
+ *      Author: erkutdonmez
  */
 
 #ifndef MAIN_H_
@@ -36,6 +36,8 @@
 #define HSI_CLK						16000000U //16MHz
 #define SYSTICK_TIM_CLK 			HSI_CLK
 
+#define TASK_RUNNING_STATE			1U
+#define TASK_BLOCKED_STATE			0U
 
 static void task1_handler(void);
 static void task2_handler(void);
@@ -43,12 +45,19 @@ static void task3_handler(void);
 static void task4_handler(void);
 static void init_systick_timer(uint32_t tick_hz);
 static void init_scheduler_stack(uint32_t sched_top_of_stack);
-static void init_tasks_stack(void);
+static void init_tasks(void);
 uint32_t get_current_psp(void);
 void save_psp_value(uint32_t current_psp_value);
 void update_next_task(void);
 static void switch_sp_to_psp(void);
 static void enable_processor_faults(void);
-static void init_gpio_pins_as_output(uint8_t* pins, uint8_t pins_len);
+
+//TCB stands for task control block
+typedef struct {
+	uint32_t psp_value;
+	uint32_t block_count;
+	uint8_t state; //whether it is running or blocked
+	void (*task_handler)(void);
+}TCB_t;
 
 #endif /* MAIN_H_ */

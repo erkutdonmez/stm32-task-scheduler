@@ -19,6 +19,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include "main.h"
+#include "led.h"
 
 #if !defined(__SOFT_FP__) && defined(__ARM_FP)
   #warning "FPU is not initialized, but the project is compiling for an FPU. Please initialize the FPU before use."
@@ -98,17 +99,13 @@
  */
 
 
-
 volatile uint32_t* const SYST_CSR    = (volatile uint32_t*)0xE000E010; //SysTick control and status register
 volatile uint32_t* const SYST_RVR    = (volatile uint32_t*)0xE000E014; //SysTick reload value register
 volatile uint32_t* const SYST_CVR    = (volatile uint32_t*)0xE000E018; //SysTick current value register
 volatile uint32_t* const SHCSR 	     = (volatile uint32_t*)0xE000ED24; //system handler control and state register
 volatile uint32_t* const CCR 	     = (volatile uint32_t*)0xE000ED14; //configuration and control register
 
-volatile uint32_t* const RCC_AHB1ENR = (volatile uint32_t*)0x40023830; // reset clock contro register AHB1 enabler
-volatile uint32_t* const GPIOD_MODER = (volatile uint32_t*)0x40020C00; //port d i/o moder
-volatile uint32_t* const GPIOD_OTYPER= (volatile uint32_t*)0x40020C04;
-volatile uint32_t* const GPIOD_ODR   = (volatile uint32_t*)0x40020C14;
+
 
 uint8_t current_task = 0; //global var
 
@@ -121,18 +118,21 @@ volatile uint32_t* TASK3_PSP;
 volatile uint32_t* TASK4_PSP;
 
 
-uint32_t psp_of_tasks[NUM_OF_TASKS] = {TASK1_STACK_END, TASK2_STACK_END, TASK3_STACK_END, TASK4_STACK_END};
-uint32_t* function_addresses_of_tasks[NUM_OF_TASKS] = {(uint32_t*)&task1_handler, (uint32_t*)&task2_handler, (uint32_t*)&task3_handler, (uint32_t*)&task4_handler};
+//uint32_t psp_of_tasks[NUM_OF_TASKS] = {TASK1_STACK_END, TASK2_STACK_END, TASK3_STACK_END, TASK4_STACK_END};
+//uint32_t* function_addresses_of_tasks[NUM_OF_TASKS] = {(uint32_t*)&task1_handler, (uint32_t*)&task2_handler, (uint32_t*)&task3_handler, (uint32_t*)&task4_handler};
+
+TCB_t user_tasks[NUM_OF_TASKS];
 
 int main(void)
 {
 	enable_processor_faults(); //check system control block from arm cortex m4 generic user guide
 
-	uint8_t output_pins[4] = {12, 13, 14, 15};
-	init_gpio_pins_as_output(output_pins, (sizeof(output_pins) / sizeof(output_pins[0])));
+	LED_COLORS output_pins[4] = {GREEN, ORANGE, RED, BLUE};
+	init_clock();
+	init_gpio_pins_as_output(output_pins, (BLUE - GREEN + 1));
 
 	init_scheduler_stack(SCHEDULER_STACK_END);
-	init_tasks_stack();
+	init_tasks();
 	init_systick_timer(TICK_HZ);
 
 	switch_sp_to_psp();
@@ -143,41 +143,48 @@ int main(void)
 	while(1);
 }
 
-//green led  -> PD12
-//orange led -> PD13
-//red led    -> PD14
-//blue led   -> PD15
-
 
 //task one runs the green led
 static void task1_handler(void) {
 	while(1) {
-		*GPIOD_ODR |= (1 << 12);
-		*GPIOD_ODR &= ~(1 << 12);
+		if(user_tasks[1].state == TASK_RUNNING_STATE) {
+			led_on(GREEN);
+		}
+		delay();
+		if(user_tasks[1].state == TASK_BLOCKED_STATE) {
+			led_off(GREEN);
+		}
+		delay();
 	}
 }
 
 //task two runs the orange led
 static void task2_handler(void) {
 	while(1) {
-		*GPIOD_ODR |= (1 << 13);
-		*GPIOD_ODR &= ~(1 << 13);
+		led_on(ORANGE);
+		delay();
+		led_off(ORANGE);
+		delay();
 	}
 }
 
 //task three runs the red led
 static void task3_handler(void) {
 	while(1) {
-		*GPIOD_ODR |= (1 << 14);
-		*GPIOD_ODR &= ~(1 << 14);
+		led_on(RED);
+		delay();
+		led_off(RED);
+		delay();
 	}
 }
 
 //task four runs the blue led
 static void task4_handler(void) {
 	while(1) {
-		*GPIOD_ODR |= (1 << 15);
-		*GPIOD_ODR &= ~(1 << 15);
+		led_on(BLUE);
+		delay();
+		led_off(BLUE);
+		delay();
 	}
 }
 
@@ -186,43 +193,53 @@ __attribute__ ((naked)) static void init_scheduler_stack(uint32_t sched_top_of_s
 	__asm volatile("BX LR"); //return to caller
 }
 
+//WE NEED TO REARRANGE THE CODE ACCORDING TO TCB_t structure
+static void init_tasks(void) {
+
+	user_tasks[0].psp_value = TASK1_STACK_END;
+	user_tasks[0].block_count = DELAY1SEC;
+	user_tasks[0].state = TASK_RUNNING_STATE;
+	user_tasks[0].task_handler = &task1_handler;
+
+	user_tasks[1].psp_value = TASK2_STACK_END;
+	user_tasks[1].block_count = DELAY500MS;
+	user_tasks[1].state = TASK_RUNNING_STATE;
+	user_tasks[1].task_handler = &task2_handler;
 
 
-static void init_gpio_pins_as_output(uint8_t* pins, uint8_t pins_len) {
-	//first initialze the clock
-	*RCC_AHB1ENR |= (1 << 3);
-	for(volatile uint8_t i = 0; i < pins_len; i++) {
-		*GPIOD_MODER &= ~(3 << (pins[i] * 2));
-		*GPIOD_MODER |= (1 << (pins[i] * 2));
-		*GPIOD_OTYPER &= ~(1 << pins[i]);
-	}
-}
+	user_tasks[2].psp_value = TASK3_STACK_END;
+	user_tasks[2].block_count = DELAY250MS;
+	user_tasks[2].state = TASK_RUNNING_STATE;
+	user_tasks[2].task_handler = &task3_handler;
 
-static void init_tasks_stack(void) {
-	uint32_t* psp_ptr;
-	for(int i = 0; i < NUM_OF_TASKS; i++) {
-		psp_ptr = (uint32_t*)psp_of_tasks[i];
+	user_tasks[3].psp_value = TASK4_STACK_END;
+	user_tasks[3].block_count = DELAY125MS;
+	user_tasks[3].state = TASK_RUNNING_STATE;
+	user_tasks[3].task_handler = &task4_handler;
 
-		psp_ptr--;
-		*psp_ptr = DUMMY_XPSR; //0x01000000 --> THUMB STATE SHOULD BE 1 TO USE THUMB ISA
+	uint32_t* psp;
+	for(uint8_t i = 0; i < NUM_OF_TASKS; i++) {
+		psp = (uint32_t*)user_tasks[i].psp_value;
+		psp--;
 
-		psp_ptr--;
-		*psp_ptr = (uint32_t)function_addresses_of_tasks[i]; //pc of task1 should point to task2, pc of task2 should point to task3 ...
+		*psp = DUMMY_XPSR; //make sure that T bit is equals to 1
+		psp--;
 
-		psp_ptr--;
-		//check for the manual
-		//we initialized lr with 0xFFFFFFFD, since we need to return to thread mode using psp,
-		//arm cortex m4 generic user guide, EXC_RETURN, for further understanding
-		*psp_ptr = 0xFFFFFFFD; //LR
+		*psp = (uint32_t)user_tasks[i].task_handler;
+		psp--;
 
-		for(int j = 0; j < 13; j++) {
-			//initialize r12, r3-r0, r11-r4 with zero in that order
-			psp_ptr--;
-			*psp_ptr = 0;
+		*psp = 0xFFFFFFFD;
+
+		for(uint8_t i = 0; i < 13; i++) {
+			psp--;
+			*psp = 0;
 		}
 
-		psp_of_tasks[i] = (uint32_t)psp_ptr;
+		user_tasks[i].psp_value = (uint32_t)psp;
+
 	}
+
+
 }
 
 static void init_systick_timer(uint32_t tick_hz) {
@@ -253,6 +270,7 @@ __attribute__ ((naked)) void SysTick_Handler(void) {
 	//STMDB => store multiple registers, decrement before
 	__asm volatile("STMDB r0!,{r4-r11}"); //r0 will be updated after each store since we used '!'
 	//3.Save the current value of PSP to the it's relevant global variable -
+	__asm volatile("PUSH {lr}");
 	__asm volatile("BL save_psp_value");
 
 
@@ -262,11 +280,11 @@ __attribute__ ((naked)) void SysTick_Handler(void) {
 	__asm volatile("BL update_next_task");
 	//2.Get its past PSP value
 	__asm volatile("BL get_current_psp"); //now r0 stores the psp value of the next task
+	__asm volatile("POP {lr}");
 	//3.Using that PSP value retrieve stack frame 2 (r4-r11)
 	__asm volatile("LDMIA r0!, {r4-r11}");
 	//4.update PSP and exit
 	__asm volatile("MSR PSP,r0");
-	__asm volatile("MOV lr,0xFFFFFFFD");
 	__asm volatile("BX LR");
 
 }
@@ -304,11 +322,11 @@ void UsageFault_Handler(void) {
 }
 
 uint32_t get_current_psp(void) {
-	return psp_of_tasks[current_task];
+	return user_tasks[current_task].psp_value;
 }
 
 void save_psp_value(uint32_t current_psp_value) {
-	psp_of_tasks[current_task] = current_psp_value;
+	user_tasks[current_task].psp_value = current_psp_value;
 }
 
 void update_next_task(void) {
