@@ -104,10 +104,11 @@ volatile uint32_t* const SYST_RVR    = (volatile uint32_t*)0xE000E014; //SysTick
 volatile uint32_t* const SYST_CVR    = (volatile uint32_t*)0xE000E018; //SysTick current value register
 volatile uint32_t* const SHCSR 	     = (volatile uint32_t*)0xE000ED24; //system handler control and state register
 volatile uint32_t* const CCR 	     = (volatile uint32_t*)0xE000ED14; //configuration and control register
+volatile uint32_t* const ICSR 		 = (volatile uint32_t*)0xE000ED04; //interrupt control and state register
 
 
-
-uint8_t current_task = 0; //global var
+uint8_t current_task = 1; //global var
+uint32_t g_tick_count = 0U; //global tick counter
 
 //WE NEED TO TRACK THE PSP VALUE OF EACH TASK
 //since during the context switching program needs to know where the task interrupted
@@ -147,14 +148,10 @@ int main(void)
 //task one runs the green led
 static void task1_handler(void) {
 	while(1) {
-		if(user_tasks[1].state == TASK_RUNNING_STATE) {
-			led_on(GREEN);
-		}
-		delay();
-		if(user_tasks[1].state == TASK_BLOCKED_STATE) {
-			led_off(GREEN);
-		}
-		delay();
+		led_on(GREEN);
+		task_delay(DELAY1SEC);
+		led_off(GREEN);
+		task_delay(DELAY1SEC);
 	}
 }
 
@@ -162,9 +159,9 @@ static void task1_handler(void) {
 static void task2_handler(void) {
 	while(1) {
 		led_on(ORANGE);
-		delay();
+		task_delay(DELAY500MS);
 		led_off(ORANGE);
-		delay();
+		task_delay(DELAY500MS);
 	}
 }
 
@@ -172,9 +169,9 @@ static void task2_handler(void) {
 static void task3_handler(void) {
 	while(1) {
 		led_on(RED);
-		delay();
+		task_delay(DELAY250MS);
 		led_off(RED);
-		delay();
+		task_delay(DELAY250MS);
 	}
 }
 
@@ -182,11 +179,35 @@ static void task3_handler(void) {
 static void task4_handler(void) {
 	while(1) {
 		led_on(BLUE);
-		delay();
+		task_delay(DELAY125MS);
 		led_off(BLUE);
-		delay();
+		task_delay(DELAY125MS);
 	}
 }
+
+static void idle_task(void) {
+	while(1);
+}
+
+void schedule(void) {
+	*ICSR |= (1 << 28);
+}
+
+void task_delay(uint32_t tick_count) {
+	//disable interrupts to prevent race condition
+	DISABLE_INTERRUPTS();
+	//never let the idle task to become at blocked state
+	if(current_task != 0) {
+		user_tasks[current_task].block_count = g_tick_count + tick_count;
+		user_tasks[current_task].state = TASK_BLOCKED_STATE;
+		schedule();
+	}
+
+	//enable interrupts again
+	ENABLE_INTERRUPTS();
+}
+
+
 
 __attribute__ ((naked)) static void init_scheduler_stack(uint32_t sched_top_of_stack) {
 	__asm volatile("MSR MSP,%0"::"r"(sched_top_of_stack)); //
@@ -196,26 +217,26 @@ __attribute__ ((naked)) static void init_scheduler_stack(uint32_t sched_top_of_s
 //WE NEED TO REARRANGE THE CODE ACCORDING TO TCB_t structure
 static void init_tasks(void) {
 
-	user_tasks[0].psp_value = TASK1_STACK_END;
-	user_tasks[0].block_count = DELAY1SEC;
-	user_tasks[0].state = TASK_RUNNING_STATE;
-	user_tasks[0].task_handler = &task1_handler;
+	user_tasks[0].psp_value = IDLE_TASK_STACK_END;
+	user_tasks[0].state = TASK_READY_STATE;
+	user_tasks[0].task_handler = &idle_task;
 
-	user_tasks[1].psp_value = TASK2_STACK_END;
-	user_tasks[1].block_count = DELAY500MS;
-	user_tasks[1].state = TASK_RUNNING_STATE;
-	user_tasks[1].task_handler = &task2_handler;
+	user_tasks[1].psp_value = TASK1_STACK_END;
+	user_tasks[1].state = TASK_READY_STATE;
+	user_tasks[1].task_handler = &task1_handler;
+
+	user_tasks[2].psp_value = TASK2_STACK_END;
+	user_tasks[2].state = TASK_READY_STATE;
+	user_tasks[2].task_handler = &task2_handler;
 
 
-	user_tasks[2].psp_value = TASK3_STACK_END;
-	user_tasks[2].block_count = DELAY250MS;
-	user_tasks[2].state = TASK_RUNNING_STATE;
-	user_tasks[2].task_handler = &task3_handler;
+	user_tasks[3].psp_value = TASK3_STACK_END;
+	user_tasks[3].state = TASK_READY_STATE;
+	user_tasks[3].task_handler = &task3_handler;
 
-	user_tasks[3].psp_value = TASK4_STACK_END;
-	user_tasks[3].block_count = DELAY125MS;
-	user_tasks[3].state = TASK_RUNNING_STATE;
-	user_tasks[3].task_handler = &task4_handler;
+	user_tasks[4].psp_value = TASK4_STACK_END;
+	user_tasks[4].state = TASK_READY_STATE;
+	user_tasks[4].task_handler = &task4_handler;
 
 	uint32_t* psp;
 	for(uint8_t i = 0; i < NUM_OF_TASKS; i++) {
@@ -259,9 +280,7 @@ static void init_systick_timer(uint32_t tick_hz) {
 
 }
 
-//when clock reaches to zero SysTick handler will run
-//be carefull to not use push-pop instruction in systick handler it uses msp, so there is a chance to corrupt msp
-__attribute__ ((naked)) void SysTick_Handler(void) {
+__attribute ((naked)) void PendSV_Handler(void) {
 	/*Save the context of the current task*/
 
 	//1.Get the current running task' PSP value
@@ -286,7 +305,15 @@ __attribute__ ((naked)) void SysTick_Handler(void) {
 	//4.update PSP and exit
 	__asm volatile("MSR PSP,r0");
 	__asm volatile("BX LR");
+}
 
+//when clock reaches to zero SysTick handler will run
+//be carefull to not use push-pop instruction in systick handler it uses msp, so there is a chance to corrupt msp
+void SysTick_Handler(void) {
+	//increment the global tick counter and trigger the pendsv exception handler
+	g_tick_count++;
+	unblock_tasks();
+	*ICSR |= (1 << 28);
 }
 
 
@@ -330,8 +357,33 @@ void save_psp_value(uint32_t current_psp_value) {
 }
 
 void update_next_task(void) {
-	current_task++;
-	current_task = current_task % NUM_OF_TASKS; // since we have 4 tasks in total
+	uint8_t state = TASK_BLOCKED_STATE;
+
+	//
+	for(uint8_t i = 1; i < NUM_OF_TASKS; i++) {
+		current_task++;
+		current_task = current_task % NUM_OF_TASKS; // since we have 5 tasks in total
+		state = user_tasks[current_task].state;
+		if((state == TASK_READY_STATE) && current_task != 0) {
+			break;
+		}
+	}
+	if(state == TASK_BLOCKED_STATE) {
+		current_task = 0;
+	}
+
+}
+
+
+void unblock_tasks(void) {
+
+	for(uint8_t i = 1; i < NUM_OF_TASKS; i++) {
+		if(user_tasks[i].state != TASK_READY_STATE) {
+			if (user_tasks[i].block_count == g_tick_count) {
+				user_tasks[i].state = TASK_READY_STATE;
+			}
+		}
+	}
 }
 
 __attribute__ ((naked)) static void switch_sp_to_psp(void) {

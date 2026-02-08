@@ -49,21 +49,7 @@ void led_off(LED_COLORS pin) {
 
  */
 
-void delay(void) {
-	for(volatile uint32_t i = 0; i < cycles; i++) {
-		GLOBAL_DELAY_COUNT++;
-		if(GLOBAL_DELAY_COUNT % DELAY125MS == 0) {
-
-		}
-		if(GLOBAL_DELAY_COUNT % DELAY125MS == 0) {
-
-		}
-		if(GLOBAL_DELAY_COUNT % DELAY125MS == 0) {
-
-		}
-		if(GLOBAL_DELAY_COUNT % DELAY125MS == 0) {
-
-		}
-
-	}
+void delay(uint32_t cycles) {
+	for(volatile uint32_t i = 0; i < cycles; i++);
 }
+
