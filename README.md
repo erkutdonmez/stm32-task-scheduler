@@ -81,5 +81,5 @@ This project is intended for **learning and experimentation**, not production us
 ## Author
 
 Erkut Dönmez  
-Computer Engineering Graduate 
+Computer Engineering Graduate
 Embedded Software Enthusiast
