@@ -1,4 +1,4 @@
-# Bare-Metal Preemptive Task Scheduler (STM32)
+#Bare-Metal Preemptive Task Scheduler (STM32)
 
 This project is a **bare-metal preemptive task scheduler** implemented on an **STM32 (ARM Cortex-M4)** microcontroller without using any RTOS.
 
@@ -6,54 +6,65 @@ The scheduler demonstrates how context switching works at the CPU level by manua
 
 ---------------------------------------------------------
 
-## Features
+##Features
 
-- Preemptive multitasking using **SysTick**
+- Preemptive multitasking using SysTick
+- Context switching using PendSV
 - Round-robin scheduling
 - Separate stack for each task (PSP-based)
-- Scheduler runs in **Handler Mode (MSP)**
-- Tasks run in **Thread Mode (PSP)**
-- Manual saving/restoring of registers **R4–R11**
+- Scheduler runs in Handler Mode (MSP)
+- Tasks run in Thread Mode (PSP)
+- Manual saving/restoring of registers R4–R11
 - Automatic exception stack frame handling by hardware
+- Basic tick-based delay mechanism
+- Task blocking and unblocking using a global tick counter
 - Bare-metal GPIO control (LED blinking tasks)
 
 ---------------------------------------------------------
 
-## Core Concepts Used
+##Core Concepts Used
 
 - ARM Cortex-M exception model
 - PSP vs MSP
 - EXC_RETURN values (0xFFFFFFFD)
 - Stack frame layout:
-  - Hardware-stacked: `R0–R3, R12, LR, PC, xPSR`
-  - Software-stacked: `R4–R11`
+	- Hardware-stacked: `R0–R3, R12, LR, PC, xPSR`
+	- Software-stacked: `R4–R11`
 - Naked interrupt handlers
-- Context switching using `STMDB` / `LDMIA`
+- Context switching using `STMDB / LDMIA`
+- `PendSV` for deferred context switching
+- `SysTick` as system time base (1 ms tick)
 
 ---------------------------------------------------------
 
-## How It Works (High-Level)
+##How It Works (High-Level)
 
 1. Each task is assigned its own private stack.
 2. Initial stack frames are manually prepared for each task.
 3. SysTick interrupt triggers every 1 ms.
 4. On SysTick:
-   - Current task context (R4–R11) is saved to its PSP.
-   - Next task is selected (round-robin).
-   - Next task context is restored.
-5. CPU exits the exception using `EXC_RETURN`, restoring PC automatically.
-6. The next task continues execution from where it left off.
+	- Global tick counter is incremented.
+	- Blocked tasks are checked and unblocked when their delay expires.
+	- PendSV exception is triggered for context switching.
+
+5. On PendSV:
+	- Current task context (R4–R11) is saved to its PSP.
+	- Next task is selected (round-robin, skipping blocked tasks).
+	- Next task context is restored.
+	- CPU exits the exception using EXC_RETURN, restoring PC automatically.
+	- The next task continues execution from where it left off.
+6. Tasks can call task_delay() to enter a blocked state for a specific number of ticks.
 
 ---------------------------------------------------------
 
-## Hardware Setup
+##Hardware Setup
 
 - Board: STM32F407-DISC1 (ARM Cortex M4 based)
 - LEDs:
-  - PD12 – Green
-  - PD13 – Orange
-  - PD14 – Red
-  - PD15 – Blue
+	- PD12 – Green
+	- PD13 – Orange
+	- PD14 – Red
+	- PD15 – Blue
 
 Each task toggles a different LED, exhibits parallel-like execution.
 
