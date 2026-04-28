@@ -1,4 +1,4 @@
-#Bare-Metal Preemptive Task Scheduler (STM32)
+# Bare-Metal Preemptive Task Scheduler (STM32)
 
 This project is a **bare-metal preemptive task scheduler** implemented on an **STM32 (ARM Cortex-M4)** microcontroller without using any RTOS.
 
@@ -6,7 +6,7 @@ The scheduler demonstrates how context switching works at the CPU level by manua
 
 ---------------------------------------------------------
 
-##Features
+## Features
 
 - Preemptive multitasking using SysTick
 - Context switching using PendSV
@@ -22,7 +22,7 @@ The scheduler demonstrates how context switching works at the CPU level by manua
 
 ---------------------------------------------------------
 
-##Core Concepts Used
+## Core Concepts Used
 
 - ARM Cortex-M exception model
 - PSP vs MSP
@@ -37,7 +37,7 @@ The scheduler demonstrates how context switching works at the CPU level by manua
 
 ---------------------------------------------------------
 
-##How It Works (High-Level)
+## How It Works (High-Level)
 
 1. Each task is assigned its own private stack.
 2. Initial stack frames are manually prepared for each task.
@@ -57,7 +57,7 @@ The scheduler demonstrates how context switching works at the CPU level by manua
 
 ---------------------------------------------------------
 
-##Hardware Setup
+## Hardware Setup
 
 - Board: STM32F407-DISC1 (ARM Cortex M4 based)
 - LEDs:
